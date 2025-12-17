@@ -7,20 +7,29 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  Image,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { storageService, AppSettings } from '../../services/storageService';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useData } from '../../contexts/DataContext';
+import { localRecordService } from '../../services/localRecordService';
 import { exportSavedRecordsToExcel } from '../../services/exportService';
+// Direct require for APK compatibility - most reliable way
+const BeaverLogo = require('../../assets/images/beaver-logo.png');
 
 export default function Settings() {
   const { colors, theme, toggleTheme } = useTheme();
+  const { setCurrentSensor, loadSensors } = useData();
   const [settings, setSettings] = useState<AppSettings>({
     autoUpload: false,
     temperatureUnit: 'C',
     theme: 'light',
     brightness: 80,
   });
+  const [deviceId, setDeviceId] = useState<string>('12345');
 
   useEffect(() => {
     loadSettings();
@@ -33,6 +42,14 @@ export default function Settings() {
   const loadSettings = async () => {
     const loadedSettings = await storageService.getSettings();
     setSettings(loadedSettings);
+    
+    // Load device ID
+    const savedDeviceId = await storageService.getDeviceId();
+    if (savedDeviceId) {
+      setDeviceId(savedDeviceId);
+    } else {
+      setDeviceId('12345'); // Default value
+    }
   };
 
   const updateSetting = async <K extends keyof AppSettings>(
@@ -48,6 +65,42 @@ export default function Settings() {
     }
   };
 
+  const handleSaveDeviceId = async () => {
+    if (!deviceId.trim()) {
+      Alert.alert('Error', 'Device ID cannot be empty');
+      return;
+    }
+
+    try {
+      // Save to storageService
+      await storageService.setDeviceId(deviceId.trim());
+      
+      // Update device entry in local storage (single object, not array)
+      const data = await localRecordService.getData();
+      if (data.device && data.device !== null && typeof data.device === 'object') {
+        // Update existing device entry with the new device ID
+        data.device = {
+          deviceId: deviceId.trim(),
+        };
+        
+        // Save updated data back to local storage
+        await AsyncStorage.setItem('@saved_records_v2', JSON.stringify(data));
+      } else {
+        // If no device exists, add a default device with the new device ID
+        await localRecordService.saveRecord({
+          device: {
+            deviceId: deviceId.trim(),
+          },
+        });
+      }
+      
+      Alert.alert('Success', 'Device ID saved successfully');
+    } catch (error) {
+      console.error('Error saving device ID:', error);
+      Alert.alert('Error', 'Failed to save device ID');
+    }
+  };
+
   const handleExport = async () => {
     try {
       await exportSavedRecordsToExcel();
@@ -60,19 +113,86 @@ export default function Settings() {
     }
   };
 
+  const handleClearAllSensors = () => {
+    Alert.alert(
+      'Clear All Sensors',
+      'This will delete all sensors from the application. This action cannot be undone. Are you sure?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Clear sensors from DataContext
+              await AsyncStorage.removeItem('@sensors');
+              await AsyncStorage.removeItem('@current_sensor');
+              
+              // Clear sensors from localRecordService
+              const data = await localRecordService.getData();
+              data.sensors = [];
+              await AsyncStorage.setItem('@saved_records_v2', JSON.stringify(data));
+              
+              // Reset current sensor state
+              await setCurrentSensor(null);
+              
+              // Reload sensors to refresh UI
+              await loadSensors();
+              
+              Alert.alert('Success', 'All sensors have been cleared.');
+            } catch (error) {
+              console.error('Error clearing sensors:', error);
+              Alert.alert('Error', 'Failed to clear sensors.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleFactoryReset = () => {
     Alert.alert(
-      'Factory Reset',
+      'Clear All Data',
       'This will delete all sensor data and reset settings. This action cannot be undone. Are you sure?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Reset',
+          text: 'Clear',
           style: 'destructive',
           onPress: async () => {
+            try {
+              // Clear all storage keys (same logic as Clear button in dashboard)
+              await AsyncStorage.multiRemove([
+                '@saved_records_v2', // localRecordService
+                '@sensors', // DataContext sensors
+                '@readings', // DataContext readings
+                '@current_sensor', // DataContext current sensor
+                '@readout_settings', // storageService settings
+                '@pending_readings', // storageService pending readings
+                '@device_id', // storageService device ID
+              ]);
+
+              // Also clear via services
+              await localRecordService.clearData();
+              await storageService.clearPendingReadings();
+              
+              // Reset current sensor state
+              await setCurrentSensor(null);
+              
+              // Reload sensors to refresh UI
+              await loadSensors();
+
+              // Reset settings to defaults
             await storageService.clearAll();
-            Alert.alert('Success', 'Factory reset completed');
+              
+              // Reload settings
             loadSettings();
+
+              Alert.alert('Success', 'All data has been cleared.');
+            } catch (error) {
+              console.error('Error during factory reset:', error);
+              Alert.alert('Error', 'Failed to complete factory reset.');
+            }
           },
         },
       ]
@@ -82,29 +202,15 @@ export default function Settings() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { backgroundColor: colors.headerBackground, borderBottomColor: colors.border }]}>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Settings</Text>
+        <Image
+          source={BeaverLogo}
+          style={styles.logo}
+          resizeMode="contain"
+        />
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Readout Link</Text>
       </View>
 
       <ScrollView style={styles.content}>
-        <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Data Sync</Text>
-
-          <View style={[styles.settingRow, { borderBottomColor: colors.input }]}>
-            <View style={styles.settingInfo}>
-              <Text style={[styles.settingLabel, { color: colors.textSecondary }]}>Auto Upload to Cloud</Text>
-              <Text style={[styles.settingDescription, { color: colors.textTertiary }]}>
-                Upload data automatically when Wi-Fi is available
-              </Text>
-            </View>
-            <Switch
-              value={settings.autoUpload}
-              onValueChange={(value) => updateSetting('autoUpload', value)}
-              trackColor={{ false: '#D1D5DB', true: '#93C5FD' }}
-              thumbColor={settings.autoUpload ? '#3B82F6' : '#F3F4F6'}
-            />
-          </View>
-        </View>
-
         <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Display Preferences</Text>
 
@@ -216,6 +322,29 @@ export default function Settings() {
         </View>
 
         <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Device Configuration</Text>
+
+          <View style={styles.deviceIdContainer}>
+            <Text style={[styles.deviceIdLabel, { color: colors.textSecondary }]}>Device ID</Text>
+            <TextInput
+              style={[styles.deviceIdInput, { backgroundColor: colors.input, borderColor: colors.inputBorder, color: colors.text }]}
+              placeholder="Enter device ID"
+              placeholderTextColor={colors.textTertiary}
+              value={deviceId}
+              onChangeText={setDeviceId}
+              keyboardType="default"
+              autoCapitalize="none"
+            />
+            <TouchableOpacity
+              style={[styles.saveDeviceIdButton, { backgroundColor: colors.primary }]}
+              onPress={handleSaveDeviceId}
+            >
+              <Text style={styles.saveDeviceIdButtonText}>Save Device ID</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Data Management</Text>
 
           <TouchableOpacity
@@ -241,8 +370,15 @@ export default function Settings() {
         </View>
 
         <View style={styles.dangerSection}>
+          <TouchableOpacity 
+            style={[styles.clearSensorsButton, { borderColor: colors.border }]} 
+            onPress={handleClearAllSensors}
+          >
+            <Text style={[styles.clearSensorsButtonText, { color: colors.text }]}>Clear All Sensors</Text>
+          </TouchableOpacity>
+          
           <TouchableOpacity style={styles.dangerButton} onPress={handleFactoryReset}>
-            <Text style={styles.dangerButtonText}>Factory Reset</Text>
+            <Text style={styles.dangerButtonText}>Clear All Data</Text>
           </TouchableOpacity>
           <Text style={[styles.dangerWarning, { color: colors.textTertiary }]}>
             This will delete all sensor data and reset settings
@@ -258,13 +394,21 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderBottomWidth: 1,
+    gap: 12,
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  logo: {
+    width: 120,
+    height: 40,
   },
   content: {
     flex: 1,
@@ -341,6 +485,17 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginHorizontal: 16,
     marginBottom: 24,
+    gap: 12,
+  },
+  clearSensorsButton: {
+    borderWidth: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  clearSensorsButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   dangerButton: {
     backgroundColor: '#EF4444',
@@ -368,5 +523,30 @@ const styles = StyleSheet.create({
   exportButtonText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  deviceIdContainer: {
+    gap: 12,
+  },
+  deviceIdLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  deviceIdInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+  },
+  saveDeviceIdButton: {
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveDeviceIdButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });

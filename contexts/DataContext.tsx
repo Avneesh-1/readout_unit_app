@@ -8,7 +8,7 @@ import type { UARTData } from '../types/database';
 import { CalculationService } from '../services/calculationService';
 
 
-interface LocalSensor {
+export interface LocalSensor {
   device_id?: string;
   sensor_id: string;
   sensor_type?: string;
@@ -49,6 +49,7 @@ interface DataContextType {
   stopFetching: () => Promise<void>;
   loadSensors: () => Promise<void>;
   saveSensor: (sensor: LocalSensor) => Promise<void>;
+  deleteSensor: (sensorId: string) => Promise<void>;
   uploadReadings: () => Promise<void>;
   saveReading: (reading: UARTData) => Promise<void>;
 }
@@ -101,6 +102,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setCurrentSensor = async (sensor: LocalSensor | null) => {
+    // Clear current reading when switching sensors to ensure fresh data for new sensor
+    const previousSensorId = currentSensor?.sensor_id;
+    const newSensorId = sensor?.sensor_id;
+    
+    // If switching to a different sensor, clear the current reading
+    if (previousSensorId && newSensorId && previousSensorId !== newSensorId) {
+      setCurrentReading(null);
+    } else if (!newSensorId) {
+      // If deselecting sensor, also clear reading
+      setCurrentReading(null);
+    }
+    
     setCurrentSensorState(sensor);
     if (sensor) {
       await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_SENSOR, JSON.stringify(sensor));
@@ -162,6 +175,29 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const deleteSensor = async (sensorId: string) => {
+    try {
+      const existingSensors = await AsyncStorage.getItem(STORAGE_KEYS.SENSORS);
+      let sensorsList: LocalSensor[] = existingSensors ? JSON.parse(existingSensors) : [];
+
+      sensorsList = sensorsList.filter((s) => s.sensor_id !== sensorId);
+
+      await AsyncStorage.setItem(STORAGE_KEYS.SENSORS, JSON.stringify(sensorsList));
+      await loadSensors();
+      
+      // If the deleted sensor was the current sensor, clear it
+      const currentSensorData = await AsyncStorage.getItem(STORAGE_KEYS.CURRENT_SENSOR);
+      if (currentSensorData) {
+        const current: LocalSensor = JSON.parse(currentSensorData);
+        if (current.sensor_id === sensorId) {
+          await setCurrentSensor(null);
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting sensor:', error);
+    }
+  };
+
   const saveReading = async (uartData: UARTData) => {
     if (!currentSensor) return;
 
@@ -193,6 +229,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       await AsyncStorage.setItem(STORAGE_KEYS.READINGS, JSON.stringify(readingsList));
 
       if (isOnline) {
+        try {
         await supabase.from('readings').insert({
           sensor_id: reading.sensor_id,
           device_id: null,
@@ -200,11 +237,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           temperature: reading.temperature,
           final_load: reading.final_load,
           digits: reading.digits,
-          voltage: reading.voltage,
-          current: reading.current,
-          load: reading.load,
+            voltage: reading.voltage,
+            current: reading.current,
+            load: reading.load,
           timestamp: reading.timestamp,
         });
+        } catch (supabaseError) {
+          console.error('Error inserting reading to Supabase:', supabaseError);
+          // Continue without throwing - data is saved locally
+        }
       }
     } catch (error) {
       console.error('Error saving reading:', error);
@@ -234,12 +275,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             }
             
             return {
-              sensor_id: r.sensor_id,
-              device_id: null,
-              frequency: r.frequency,
-              temperature: r.temperature,
-              final_load: r.final_load,
-              digits: r.digits,
+            sensor_id: r.sensor_id,
+            device_id: null,
+            frequency: r.frequency,
+            temperature: r.temperature,
+            final_load: r.final_load,
+            digits: r.digits,
               voltage: r.voltage,
               current: r.current,
               load: r.load,
@@ -247,10 +288,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             };
           });
 
+          try {
           const { error } = await supabase.from('readings').insert(readingsToUpload);
 
           if (!error) {
             await AsyncStorage.setItem(STORAGE_KEYS.READINGS, JSON.stringify([]));
+            } else {
+              console.error('Error uploading readings:', error);
+            }
+          } catch (supabaseError) {
+            console.error('Error uploading readings to Supabase:', supabaseError);
+            // Continue without throwing - readings remain in local storage
           }
         }
       }
@@ -273,6 +321,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         stopFetching,
         loadSensors,
         saveSensor,
+        deleteSensor,
         uploadReadings,
         saveReading,
       }}

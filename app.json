@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "bolt-expo-nativewind",
+    "name": "Readout Link",
     "slug": "bolt-expo-nativewind",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -24,6 +24,14 @@
     "experiments": {
       "typedRoutes": true
     },
+    "splash": {
+      "image": "./assets/images/beaver-logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "android": {
       "package": "com.anonymous.boltexponativewind",
       "compileSdkVersion": 34,
@@ -32,7 +40,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "82896462-86b5-491a-9ea9-149688576041"
+        "projectId": "a24e2170-ecd3-4966-827e-870fc73f4364"
       }
     }
   }

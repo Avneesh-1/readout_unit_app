@@ -18,6 +18,22 @@ allprojects {
     mavenCentral()
     maven { url 'https://www.jitpack.io' }
   }
+  
+  // Fix for react-native-usb-serialport-for-android lStar error
+  subprojects {
+    afterEvaluate { project ->
+      if (project.hasProperty('android')) {
+        project.android {
+          if (project.name == 'react-native-usb-serialport-for-android') {
+            compileSdkVersion 36
+            if (defaultConfig.hasProperty('targetSdkVersion')) {
+              defaultConfig.targetSdkVersion 36
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 apply plugin: "expo-root-project"

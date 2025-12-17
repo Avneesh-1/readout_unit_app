@@ -6,6 +6,7 @@ const KEYS = {
   CURRENT_SENSOR: '@current_sensor',
   PENDING_READINGS: '@pending_readings',
   DEVICE_ID: '@device_id',
+  LAST_UPLOADED_HASH: '@last_uploaded_hash',
 };
 
 export interface AppSettings {
@@ -103,12 +104,39 @@ class StorageService {
     }
   }
 
+  async getLastUploadedHash(): Promise<string | null> {
+    try {
+      return await AsyncStorage.getItem(KEYS.LAST_UPLOADED_HASH);
+    } catch (error) {
+      console.error('Error loading last uploaded hash:', error);
+      return null;
+    }
+  }
+
+  async setLastUploadedHash(hash: string): Promise<void> {
+    try {
+      await AsyncStorage.setItem(KEYS.LAST_UPLOADED_HASH, hash);
+    } catch (error) {
+      console.error('Error saving last uploaded hash:', error);
+    }
+  }
+
+  async clearLastUploadedHash(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(KEYS.LAST_UPLOADED_HASH);
+    } catch (error) {
+      console.error('Error clearing last uploaded hash:', error);
+    }
+  }
+
   async clearAll(): Promise<void> {
     try {
       await AsyncStorage.multiRemove([
         KEYS.SETTINGS,
         KEYS.CURRENT_SENSOR,
         KEYS.PENDING_READINGS,
+        KEYS.DEVICE_ID,
+        KEYS.LAST_UPLOADED_HASH,
       ]);
     } catch (error) {
       console.error('Error clearing storage:', error);

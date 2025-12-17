@@ -130,6 +130,13 @@ android {
     androidResources {
         ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
     }
+    
+    // Ensure assets directory is included
+    sourceSets {
+        main {
+            assets.srcDirs = ['src/main/assets']
+        }
+    }
 }
 
 // Apply static values from `gradle.properties` to the `android.packagingOptions`
@@ -180,3 +187,16 @@ dependencies {
         implementation jscFlavor
     }
 }
+
+// Note: Assets are automatically bundled by Expo/Metro through assetBundlePatterns in app.json
+// Direct require() paths in components will be resolved by Metro bundler
+// No manual asset copying needed - Expo handles this automatically
+
+// Custom clean task that deletes .cxx directory first to avoid CMake errors
+task cleanNativeBuild(type: Delete) {
+    delete fileTree(dir: '.cxx', include: '**/*')
+    delete fileTree(dir: 'build', include: '**/*')
+}
+
+// Make the standard clean task depend on our custom clean
+clean.dependsOn cleanNativeBuild

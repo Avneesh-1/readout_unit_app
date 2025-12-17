@@ -108,7 +108,7 @@ private notifyConnection() {
       // this.toast("Opening Serial Port…");
 
       this.usbSerial = await UsbSerialManager.open(id, {
-        baudRate: 2400,
+        baudRate: 9600,
         dataBits: 8,
         stopBits: 1,
         parity: Parity?.None ?? 0,

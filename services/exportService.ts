@@ -38,10 +38,10 @@ export async function exportSavedRecordsToExcel(): Promise<void> {
   const data = await localRecordService.getData();
 
   console.log(
-    `Exporting: ${data.devices.length} devices, ${data.sensors.length} sensors, ${data.readings.length} readings`
+    `Exporting: ${data.device ? 1 : 0} device(s), ${data.sensors.length} sensors, ${data.readings.length} readings`
   );
 
-  if (data.devices.length === 0 && data.sensors.length === 0 && data.readings.length === 0) {
+  if (!data.device && data.sensors.length === 0 && data.readings.length === 0) {
     throw new Error('No records available to export.');
   }
 
@@ -51,8 +51,22 @@ export async function exportSavedRecordsToExcel(): Promise<void> {
     sensorMap.set(sensor.sensorId, sensor);
   });
 
-  // Get the latest device info (or first available)
-  const latestDevice = data.devices.length > 0 ? data.devices[data.devices.length - 1] : null;
+  // Helper function to get device ID from sensor or reading (prioritize individual deviceId)
+  const getDeviceId = (sensor: SensorInfo | null, reading: ReadingInfo | null): string => {
+    // First, try reading's deviceId
+    if (reading && reading.deviceId && reading.deviceId !== null && reading.deviceId !== '') {
+      return String(reading.deviceId);
+    }
+    // Then, try sensor's deviceId
+    if (sensor && sensor.deviceId && sensor.deviceId !== null && sensor.deviceId !== '') {
+      return String(sensor.deviceId);
+    }
+    // Fall back to global device entry
+    if (data.device && data.device !== null && typeof data.device === 'object') {
+      return data.device.deviceId || '';
+    }
+    return '';
+  };
 
   // Combine sensors with readings - each reading creates a row
   const flatData: any[] = [];
@@ -87,16 +101,16 @@ export async function exportSavedRecordsToExcel(): Promise<void> {
 
         flatData.push({
           sensor_id: sensor.sensorId,
-          device_id: latestDevice?.deviceId ?? '',
+          device_id: getDeviceId(sensor, reading),
           sensor_type: sensor.sensorType ?? '',
           sensor_group: sensor.group ?? '',
-          created_at: formatDateString(sensor.created_at ?? ''),
+          'Date of installation': formatDateString(sensor.created_at ?? ''),
           gauge_factor: sensor.gauge_factor ?? '',
           unit: sensor.unit ?? '',
           initial_reading: sensor.initialReading ?? '',
           initial_temperature: sensor.initial_temperature ?? '',
           initial_digit: initialDigit,
-          location: latestDevice?.location ?? '',
+          location: sensor.location ?? '',
           remarks: sensor.remarks ?? '',
           sensor_value: reading.value ?? '',
           temperature: reading.temperature ?? '',
@@ -121,17 +135,17 @@ export async function exportSavedRecordsToExcel(): Promise<void> {
 
       flatData.push({
         sensor_id: sensor.sensorId,
-        device_id: latestDevice?.deviceId ?? '',
+        device_id: getDeviceId(sensor, null),
         sensor_type: sensor.sensorType ?? '',
         sensor_group: sensor.group ?? '',
-        created_at: formatDateString(sensor.created_at ?? ''),
+        'Date of installation': formatDateString(sensor.created_at ?? ''),
         gauge_factor: sensor.gauge_factor ?? '',
         unit: sensor.unit ?? '',
         initial_reading: sensor.initialReading ?? '',
         initial_temperature: sensor.initial_temperature ?? '',
-        initial_digit: initialDigit,
-        location: latestDevice?.location ?? '',
-        remarks: sensor.remarks ?? '',
+          initial_digit: initialDigit,
+          location: sensor.location ?? '',
+          remarks: sensor.remarks ?? '',
         sensor_value: '',
         temperature: '',
         reading_digit: '',
@@ -150,7 +164,7 @@ export async function exportSavedRecordsToExcel(): Promise<void> {
     'device_id',
     'sensor_type',
     'sensor_group',
-    'created_at',
+    'Date of installation',
     'gauge_factor',
     'unit',
     'initial_reading',
