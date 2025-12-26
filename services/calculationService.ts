@@ -4,7 +4,8 @@ export class CalculationService {
     initialReading: number,
     gaugeFactor: number
   ): number {
-    return (currentReading - initialReading) * gaugeFactor;
+    // Always return positive load (apply modulus)
+    return Math.abs((currentReading - initialReading) * gaugeFactor);
   }
 
   static calculateDigits(currentReading: number): number {

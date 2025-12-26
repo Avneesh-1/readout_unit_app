@@ -528,41 +528,13 @@ export default function Dashboard() {
         normalizedDevice = null; // Will be determined from sensors
       }
       
-      // Prepare device data - use device ID from sensors themselves (each sensor remembers its device ID)
-      // Get device ID from the first sensor that has one, or fall back to global device entry
-      let deviceIdFromSensor: string | null = null;
-      
-      // Try to get device ID from sensors (each sensor stores its own device ID)
-      if (localData.sensors && localData.sensors.length > 0) {
-        // Find first sensor with a device ID
-        const sensorWithDeviceId = localData.sensors.find((s: any) => s.deviceId && s.deviceId !== null && s.deviceId !== '');
-        if (sensorWithDeviceId) {
-          deviceIdFromSensor = sensorWithDeviceId.deviceId;
-        }
-      }
-      
-      // Fall back to global device entry if no sensor has device ID
-      const deviceIdFromGlobal = normalizedDevice?.deviceId || null;
-      
-      // Use device ID from sensor (preferred) or from global entry, or default
-      let finalDeviceId: string | number = deviceIdFromSensor || deviceIdFromGlobal || '12345';
-      
-      // Only default to "12345" if deviceId is actually invalid
-      if (finalDeviceId === null || finalDeviceId === undefined || finalDeviceId === '' || finalDeviceId === 'null' || finalDeviceId === 'undefined') {
-        finalDeviceId = '12345';
-      }
-      
-      console.log('Device ID selection:', {
-        fromSensor: deviceIdFromSensor,
-        fromGlobal: deviceIdFromGlobal,
-        final: finalDeviceId,
-      });
-      
       // Group sensors and readings by their device ID
       // Each sensor/reading stores its own device ID, so we group them accordingly
       const deviceGroups = new Map<string, { sensors: any[], readings: any[] }>();
       
       // Helper to get device ID from sensor or reading
+      // IMPORTANT: We no longer fall back to "first sensor's" device ID.
+      // Each item uses its own stored deviceId; if missing, we try its linked sensor; if still missing, we fall back to a safe default.
       const getDeviceIdFromItem = (item: any): string => {
         // Get device ID from the item itself, or from its associated sensor, or use default
         if (item.deviceId && item.deviceId !== null && item.deviceId !== '') {
@@ -575,8 +547,12 @@ export default function Dashboard() {
             return String(sensor.deviceId);
           }
         }
-        // Fall back to global device ID or default
-        return finalDeviceId ? String(finalDeviceId) : '12345';
+        // Fall back to global device entry if it exists
+        if (normalizedDevice && normalizedDevice.deviceId) {
+          return String(normalizedDevice.deviceId);
+        }
+        // Absolute last resort: hard-coded default
+        return '12345';
       };
       
       // Group sensors by device ID
