@@ -138,25 +138,17 @@ export default function Dashboard() {
     }
 
     try {
-      // Check if sensor already exists in local storage
-      // If it does, use the sensor's stored deviceId (preserves original device ID)
-      // Otherwise, use the current device ID from settings
+      // Always use the current device ID from settings when saving readings
+      // This ensures that when device ID is changed, new readings use the new device ID
+      const savedDeviceId = await storageService.getDeviceId();
+      const deviceIdToUse = savedDeviceId || '12345';
+      console.log(`Using current settings deviceId: ${deviceIdToUse} for sensor ${currentSensor.sensor_id}`);
+      
+      // Check if sensor already exists in local storage (for reference only)
       const localDataCheck = await localRecordService.getData();
       const existingSensor = localDataCheck.sensors.find(
         (s: any) => s.sensorId === currentSensor.sensor_id
       );
-      
-      let deviceIdToUse: string;
-      if (existingSensor && existingSensor.deviceId && existingSensor.deviceId !== null && existingSensor.deviceId !== '') {
-        // Sensor exists and has a deviceId - use it (preserves original device ID)
-        deviceIdToUse = String(existingSensor.deviceId);
-        console.log(`Using existing sensor's deviceId: ${deviceIdToUse} for sensor ${currentSensor.sensor_id}`);
-      } else {
-        // New sensor or sensor without deviceId - use current device ID from settings
-      const savedDeviceId = await storageService.getDeviceId();
-        deviceIdToUse = savedDeviceId || '12345';
-        console.log(`Using current settings deviceId: ${deviceIdToUse} for sensor ${currentSensor.sensor_id}`);
-      }
       
       // Capture current reading values at the moment Save button is clicked
       // These values are snapshots of the live data at this exact moment
@@ -236,6 +228,7 @@ export default function Dashboard() {
           reading_digit: digitsValue ?? null,
           final_load: finalLoadValue !== null ? String(finalLoadValue) : null,
           timestamp: CalculationService.formatTimestamp(new Date()),
+          deviceId: deviceIdToUse, // Explicitly set deviceId on reading (current settings device ID)
         },
       });
 
@@ -533,40 +526,51 @@ export default function Dashboard() {
       const deviceGroups = new Map<string, { sensors: any[], readings: any[] }>();
       
       // Helper to get device ID from sensor or reading
-      // IMPORTANT: We no longer fall back to "first sensor's" device ID.
-      // Each item uses its own stored deviceId; if missing, we try its linked sensor; if still missing, we fall back to a safe default.
-      const getDeviceIdFromItem = (item: any): string => {
-        // Get device ID from the item itself, or from its associated sensor, or use default
+      // IMPORTANT: For readings, ALWAYS use the reading's own deviceId (which comes from current settings)
+      // Do NOT fall back to sensor's deviceId, as the same sensor can have readings with different device IDs
+      const getDeviceIdFromItem = (item: any, isReading: boolean = false): string => {
+        // For readings, prioritize reading's own deviceId (it reflects current settings device ID)
+        if (isReading && item.deviceId && item.deviceId !== null && item.deviceId !== '') {
+          return String(item.deviceId);
+        }
+        
+        // For sensors or items with deviceId, use it directly
         if (item.deviceId && item.deviceId !== null && item.deviceId !== '') {
           return String(item.deviceId);
         }
-        // For readings, try to find the sensor and use its device ID
-        if (item.sensorId) {
+        
+        // For readings without deviceId, try to find the sensor (but this should rarely happen)
+        if (isReading && item.sensorId) {
           const sensor = localData.sensors.find((s: any) => s.sensorId === item.sensorId);
           if (sensor && sensor.deviceId && sensor.deviceId !== null && sensor.deviceId !== '') {
+            console.warn(`Reading for sensor ${item.sensorId} missing deviceId, using sensor's deviceId: ${sensor.deviceId}`);
             return String(sensor.deviceId);
           }
         }
+        
         // Fall back to global device entry if it exists
         if (normalizedDevice && normalizedDevice.deviceId) {
           return String(normalizedDevice.deviceId);
         }
+        
         // Absolute last resort: hard-coded default
         return '12345';
       };
       
       // Group sensors by device ID
       localData.sensors.forEach((sensor: any) => {
-        const sensorDeviceId = getDeviceIdFromItem(sensor);
+        const sensorDeviceId = getDeviceIdFromItem(sensor, false);
         if (!deviceGroups.has(sensorDeviceId)) {
           deviceGroups.set(sensorDeviceId, { sensors: [], readings: [] });
         }
         deviceGroups.get(sensorDeviceId)!.sensors.push(sensor);
       });
       
-      // Group readings by device ID (from reading itself or its sensor)
+      // Group readings by device ID - ALWAYS use reading's own deviceId (not sensor's)
+      // This allows the same sensor to have readings with different device IDs
       localData.readings.forEach((reading: any) => {
-        const readingDeviceId = getDeviceIdFromItem(reading);
+        const readingDeviceId = getDeviceIdFromItem(reading, true); // true = isReading
+        console.log(`Reading grouping - sensorId: ${reading.sensorId}, reading.deviceId: ${reading.deviceId}, grouped under: ${readingDeviceId}`);
         if (!deviceGroups.has(readingDeviceId)) {
           deviceGroups.set(readingDeviceId, { sensors: [], readings: [] });
         }

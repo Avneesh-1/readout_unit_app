@@ -249,20 +249,13 @@ class LocalRecordService {
 
       // Always append reading if provided (this accumulates all readings)
       if (payload.reading) {
-        // For readings, prioritize the sensor's deviceId if the sensor exists
-        // This ensures readings use the same deviceId as their sensor
-        let readingDeviceId: string | null = null;
-        if (payload.reading.sensorId) {
-          const associatedSensor = data.sensors.find((s: any) => s.sensorId === payload.reading.sensorId);
-          if (associatedSensor && associatedSensor.deviceId && associatedSensor.deviceId !== null && associatedSensor.deviceId !== '') {
-            // Use the sensor's deviceId (preferred)
-            readingDeviceId = String(associatedSensor.deviceId);
-          }
-        }
-        // Fall back to currentDeviceId (from payload) or reading's deviceId
-        if (!readingDeviceId) {
-          readingDeviceId = currentDeviceId || payload.reading.deviceId || null;
-        }
+        // Always use the deviceId from the payload (current settings device ID)
+        // This ensures that when device ID is changed in settings, new readings use the new device ID
+        // Priority: payload.reading.deviceId > currentDeviceId (from payload.device) > reading's own deviceId
+        const readingDeviceId: string | null = 
+          payload.reading.deviceId || 
+          currentDeviceId || 
+          (payload.reading.deviceId !== undefined ? payload.reading.deviceId : null);
         
         // Normalize timestamp to local format
         const normalizedReading = {

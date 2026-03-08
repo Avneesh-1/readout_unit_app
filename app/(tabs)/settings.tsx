@@ -172,11 +172,10 @@ export default function Settings() {
         return;
       }
 
-      const { device: apiDevice, sensors: apiSensors, readings: apiReadings } = responseData;
+      const { device: apiDevice, sensors: apiSensors } = responseData;
       const deviceIdFromAPI = apiDevice?.deviceId || importDeviceId;
 
       let importedSensorsCount = 0;
-      let importedReadingsCount = 0;
       let skippedSensorsCount = 0;
 
       // Check existing sensors to avoid duplicates
@@ -241,40 +240,11 @@ export default function Settings() {
         importedSensorsCount++;
       }
 
-      // Import readings
-      if (apiReadings && apiReadings.length > 0) {
-        for (const apiReading of apiReadings) {
-          // Map API reading to ReadingInfo format
-          const readingInfo = {
-            sensorId: apiReading.sensorId,
-            value: apiReading.value !== null && apiReading.value !== undefined ? apiReading.value : null,
-            temperature: apiReading.temperature !== null && apiReading.temperature !== undefined ? apiReading.temperature : null,
-            reading_digit: apiReading.reading_digit !== null && apiReading.reading_digit !== undefined ? apiReading.reading_digit : null,
-            final_load: apiReading.final_load !== null && apiReading.final_load !== undefined ? String(apiReading.final_load) : null,
-            timestamp: apiReading.timestamp || new Date().toISOString(),
-            deviceId: deviceIdFromAPI,
-          };
-
-          // Save reading to localRecordService
-          await localRecordService.saveRecord({
-            device: {
-              deviceId: deviceIdFromAPI,
-            },
-            reading: readingInfo,
-          });
-
-          importedReadingsCount++;
-        }
-      }
-
       // Reload sensors to refresh UI
       await loadSensors();
 
       // Show success message
       let message = `Successfully imported ${importedSensorsCount} sensor(s)`;
-      if (importedReadingsCount > 0) {
-        message += ` and ${importedReadingsCount} reading(s)`;
-      }
       if (skippedSensorsCount > 0) {
         message += `\n${skippedSensorsCount} sensor(s) were skipped (already exist)`;
       }
